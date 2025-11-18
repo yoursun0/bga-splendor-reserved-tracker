@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "BGA Splendor: Opponent Reserved Tracker (starter)",
+  "version": "0.1.0",
+  "description": "Track opponent-reserved cards in BoardGameArena Splendor (starter extension — adapt selectors).",
+  "icons": {
+    "48": "icons/icon48.png"
+  },
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://boardgamearena.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "BGA Splendor Reserved Tracker"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://boardgamearena.com/*"],
+      "js": ["content_script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

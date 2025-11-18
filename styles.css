@@ -1,0 +1,14 @@
+/* styles.css - simple popup styling */
+body {
+  font-family: Arial, sans-serif;
+  min-width: 300px;
+  padding: 8px;
+  color: #111;
+}
+h2 { margin: 4px 0 8px 0; font-size: 14px; }
+#cards { margin-top: 8px; max-height: 240px; overflow:auto; border-top: 1px solid #ddd; padding-top: 6px;}
+.cardItem { padding: 6px 4px; border-bottom: 1px solid #eee; }
+.cardTitle { font-weight: 600; font-size: 12px; }
+.cardText { font-size: 11px; color: #333; white-space: pre-wrap; }
+textarea { width: 100%; box-sizing: border-box; font-family: monospace; margin-top: 6px; }
+button { margin-top: 6px; }
