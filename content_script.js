@@ -3,11 +3,10 @@
 // NOTE: BoardGameArena's real DOM/classes may differ; open DevTools and adapt RESERVED_SELECTORS.
 
 const RESERVED_SELECTORS = [
-  // Common guesses - replace with the real selectors you find in BGA's Splendor game DOM
-  '.reserve',           // generic class
-  '.card.reserved',     // combined class
-  '[data-reserved]',    // data attribute
-  '.reservedCard'
+  // BGA Splendor selectors (adapted from live DOM analysis)
+  '#player_reserve .spl_card',           // Cards in player's reserved area
+  '#spl_playertable [id^="player_reserved_card"]', // Reserved card ID pattern
+  'div[id^="player_"][id*="reserve"] .spl_card', // Dynamic reserved card selectors
 ];
 
 let lastSnapshot = '';
