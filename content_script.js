@@ -4,9 +4,11 @@
 
 const RESERVED_SELECTORS = [
   // BGA Splendor selectors (adapted from live DOM analysis)
-  '#player_reserve .spl_card',           // Cards in player's reserved area
-  '#spl_playertable [id^="player_reserved_card"]', // Reserved card ID pattern
-  'div[id^="player_"][id*="reserve"] .spl_card', // Dynamic reserved card selectors
+  '#player_reserve .spl_card',                    // Player's reserved cards in main game area
+  '#spl_miniplayerboard .spl_hand [id^="minicard_"]',  // Opponent reserved cards in left player panels
+  '.player-board .spl_hand [id^="minicard_"]',   // Fallback: opponent reserved cards in any player board
+  'div[id^="spl_hand_"] [id^="minicard_"]',      // Specific opponent hand containers
+  'div[id^="player_"][id*="reserve"] .spl_card', // Dynamic player reserve areas if they exist
 ];
 
 let lastSnapshot = '';
@@ -17,7 +19,17 @@ function extractCardInfo(el) {
   const text = (el.innerText || '').trim().slice(0, 200);
   const html = el.outerHTML;
   const rect = el.getBoundingClientRect ? el.getBoundingClientRect().toJSON() : {};
-  return { id, text, html, rect };
+  
+  // Extract visual card image class (spl_img_1 through spl_img_6)
+  const classStr = el.className || '';
+  const imageClassMatch = classStr.match(/spl_img_\d+/);
+  const imageClass = imageClassMatch ? imageClassMatch[0] : null;
+  
+  // Extract card type/color class (type_C, type_S, type_E, type_R, type_O, type_G)
+  const typeMatch = classStr.match(/type_[A-Z]/);
+  const cardType = typeMatch ? typeMatch[0] : null;
+  
+  return { id, text, html, rect, imageClass, cardType };
 }
 
 function findReservedCards() {

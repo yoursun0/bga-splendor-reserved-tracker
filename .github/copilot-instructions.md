@@ -51,31 +51,49 @@ Brief: This repository is a minimal Chrome extension (Manifest V3) that heuristi
 
 *BGA Splendor DOM structure (from live game sample):*
 - **Cards in play:** `#cards > div.spl_cardrow > div#card_XYZ.spl_card` (main game cards, rows 1-3)
-- **Player reserved area:** `#player_reserve.spl_cardrow` (contains reserved cards for current player)
-- **Opponent player panels:** `#opponents > div[id^="player_"]` (look here for opponent reserved cards)
-- **Key IDs/classes:** `spl_card` (all card elements), `spl_cardrow` (rows), `type_X` (color codes)
+- **Player reserved area:** `#player_reserve.spl_cardrow` (contains `.spl_card` elements for current player)
+- **Opponent reserved cards (LEFT SIDEBAR):** `#spl_miniplayerboard .spl_hand [id^="minicard_"]` (opponent reserved cards shown as minicard_* elements in left player panels)
+- **Alternative opponent selectors:** `.player-board .spl_hand [id^="minicard_"]`, `div[id^="spl_hand_"] [id^="minicard_"]`
+- **Card visual indicators:** Each card has `spl_img_1` through `spl_img_6` class (determines card image/appearance)
+- **Card type/color:** Each card has `type_C`, `type_S`, `type_E`, `type_R`, `type_O`, or `type_G` class
+- **Key IDs/classes:** `spl_card` (regular cards), `spl_miniversion` (opponent cards), `spl_cardrow` (rows), `type_X` (color)
 
-*RESERVED_SELECTORS in `content_script.js`:*
+*RESERVED_SELECTORS in `content_script.js` (UPDATED):*
 ```javascript
 const RESERVED_SELECTORS = [
-  '#player_reserve .spl_card',           // Cards in player's reserved area
-  '#spl_playertable [id^="player_reserved_card"]', // Reserved card ID pattern
-  'div[id^="player_"][id*="reserve"] .spl_card', // Dynamic opponent reserved cards
+  '#player_reserve .spl_card',                    // Player's reserved cards in main game area
+  '#spl_miniplayerboard .spl_hand [id^="minicard_"]',  // Opponent reserved cards in left player panels
+  '.player-board .spl_hand [id^="minicard_"]',   // Fallback: opponent reserved cards in any player board
+  'div[id^="spl_hand_"] [id^="minicard_"]',      // Specific opponent hand containers
+  'div[id^="player_"][id*="reserve"] .spl_card', // Dynamic player reserve areas if they exist
 ];
 ```
-These selectors target BGA's actual Splendor DOM structure. For opponent reserved cards, the key is finding `#opponents` and then drilling into player-specific containers with `[id*="reserve"]`.
+**KEY DISCOVERY:** Opponent reserved cards are displayed as `minicard_*` elements (NOT `card_*`) inside `.spl_hand` containers within the opponent player boards shown in the left sidebar. This fixed issue (a) of missing 3rd opponent card.
+
+*Card extraction in `extractCardInfo()` (UPDATED):*
+```javascript
+// Extracts card ID, text, visual class, and card type for rendering
+const imageClass = el.className.match(/spl_img_\d+/)?.[0]; // spl_img_1 to spl_img_6
+const cardType = el.className.match(/type_[A-Z]/)?.[0];    // type_C, type_S, etc.
+return { id, text, html, rect, imageClass, cardType };
+```
+Returns `imageClass` (e.g., `spl_img_2`) for visual card preview instead of text ID.
 
 *Code references:*
-- `content_script.js`: Update `RESERVED_SELECTORS` array to match opponent reserved card areas
-- `popup.js`: Uses `chrome.tabs.sendMessage(tabs[0].id, { type: 'force-scan' }, ...)` to force rescan
-- `background.js`: Listens for `{type:'reserved-update'}` and persists to `chrome.storage.local`
+- `content_script.js`: `RESERVED_SELECTORS` now targets both player `.spl_card` and opponent `.spl_hand [id^="minicard_"]`
+- `extractCardInfo()`: Now extracts `imageClass` and `cardType` for visual rendering
+- `popup.js`: Should render cards with visual preview using `imageClass` instead of showing text IDs
+- `popup.html`: Add CSS to display card images using `background-image` or class-based styling
 
 *Developer workflow for selector refinement:*
-1. Open live Splendor game on BGA; play a few turns to get opponent reserved cards visible
-2. Press F12 → Elements tab; right-click opponent's reserved card → Inspect
-3. Note the ID/class chain (e.g., `#player_14 > div#player_reserve > div#card_XX.spl_card`)
-4. Test in DevTools Console: `document.querySelectorAll('YOUR_SELECTOR_HERE').length > 0`
-5. Paste working selector into popup textarea, click "Save Selectors" for immediate runtime test
-6. Check DevTools → Application → Storage → Extensions → `reservedCards` to verify detection
+1. Open live Splendor game on BGA during mid-game with opponent reserved cards visible
+2. Press F12 → Elements tab; right-click opponent's reserved card in left sidebar → Inspect
+3. Note: opponent cards use `<div id="minicard_XYZ" class="spl_card spl_img_N type_X">` structure
+4. Test in DevTools Console: `document.querySelectorAll('#spl_miniplayerboard .spl_hand [id^="minicard_"]').length > 0`
+5. At game end: verify selectors still work (reserved areas may be hidden but DOM persists in some states)
+6. Use popup "Save Selectors" to test new selectors at runtime without reloading
 
-If opponent cards still don't show, they may be in a hidden panel or rendered asynchronously. Look for `display:none` or check if panels expand on-demand.
+**Known issues and solutions (BUG TRACKER):**
+- **(a) Missing 3rd opponent card:** FIXED - Changed selectors to target `minicard_*` in `.spl_hand` instead of only player reserve area
+- **(b) Cards disappear at game end:** Selectors use persistent opponent player panels (don't depend on hidden panels)
+- **(c) Cards show as IDs not images:** IN PROGRESS - Extract `imageClass` property and render visual preview in popup

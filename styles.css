@@ -1,14 +1,36 @@
 /* styles.css - simple popup styling */
 body {
   font-family: Arial, sans-serif;
-  min-width: 300px;
+  min-width: 350px;
   padding: 8px;
   color: #111;
 }
 h2 { margin: 4px 0 8px 0; font-size: 14px; }
-#cards { margin-top: 8px; max-height: 240px; overflow:auto; border-top: 1px solid #ddd; padding-top: 6px;}
-.cardItem { padding: 6px 4px; border-bottom: 1px solid #eee; }
-.cardTitle { font-weight: 600; font-size: 12px; }
-.cardText { font-size: 11px; color: #333; white-space: pre-wrap; }
-textarea { width: 100%; box-sizing: border-box; font-family: monospace; margin-top: 6px; }
-button { margin-top: 6px; }
+h3 { margin: 12px 0 6px 0; font-size: 12px; }
+#cards { margin-top: 8px; max-height: 300px; overflow:auto; border-top: 1px solid #ddd; padding-top: 6px;}
+.cardItem { 
+  padding: 8px 4px; 
+  border-bottom: 1px solid #eee; 
+  display: flex; 
+  gap: 8px; 
+  align-items: center;
+}
+.cardPreview {
+  width: 40px;
+  height: 56px;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #666;
+  flex-shrink: 0;
+}
+.cardInfo { flex: 1; }
+.cardTitle { font-weight: 600; font-size: 12px; color: #222; }
+.cardType { font-size: 10px; color: #666; margin-top: 2px; }
+.cardText { font-size: 10px; color: #888; white-space: pre-wrap; margin-top: 2px; overflow: hidden; max-height: 20px; }
+textarea { width: 100%; box-sizing: border-box; font-family: monospace; margin-top: 6px; font-size: 11px; }
+button { margin-top: 6px; padding: 4px 8px; }

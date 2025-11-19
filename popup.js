@@ -14,14 +14,39 @@ document.addEventListener('DOMContentLoaded', () => {
     cards.forEach((c, i) => {
       const d = document.createElement('div');
       d.className = 'cardItem';
+      
+      // Visual card preview (using imageClass indicator)
+      const preview = document.createElement('div');
+      preview.className = 'cardPreview';
+      if (c.imageClass) {
+        preview.textContent = c.imageClass.replace('spl_img_', '');
+        preview.title = `Card Type: ${c.cardType || 'unknown'}`;
+      } else {
+        preview.textContent = '?';
+      }
+      
+      // Card info section
+      const info = document.createElement('div');
+      info.className = 'cardInfo';
+      
       const title = document.createElement('div');
       title.className = 'cardTitle';
-      title.textContent = c.id || `card ${i+1}`;
+      title.textContent = c.id || `Card ${i+1}`;
+      
+      const typeLabel = document.createElement('div');
+      typeLabel.className = 'cardType';
+      typeLabel.textContent = c.cardType ? `Type: ${c.cardType}` : '';
+      
       const text = document.createElement('div');
       text.className = 'cardText';
-      text.textContent = c.text || '';
-      d.appendChild(title);
-      d.appendChild(text);
+      text.textContent = c.text || '(no text)';
+      
+      info.appendChild(title);
+      if (c.cardType) info.appendChild(typeLabel);
+      info.appendChild(text);
+      
+      d.appendChild(preview);
+      d.appendChild(info);
       cardsContainer.appendChild(d);
     });
   }
