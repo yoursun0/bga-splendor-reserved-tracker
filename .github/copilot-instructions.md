@@ -1,99 +1,105 @@
 # Copilot instructions for BGA Splendor Reserved Tracker
 
-Brief: This repository is a minimal Chrome extension (Manifest V3) that heuristically detects opponent-reserved cards on BoardGameArena's Splendor page and exposes them to a popup. The extension is intentionally small and intended for experimentation — selectors must be adapted to the live BGA DOM.
+Brief: This repository is a Chrome extension (Manifest V3) that extracts opponent-reserved cards from BoardGameArena's Splendor game log and displays them in a popup UI with corresponding card images (card_XX.png from the local `images/` folder).
 
 **Big picture**
-- **What it is:** A Chrome extension (MV3) composed of a content script, a background service worker, and a popup UI.
-- **Key files:** `manifest.json`, `content_script.js`, `background.js`, `popup.html`, `popup.js`, `README.md`.
-- **Data flow:** `content_script.js` scans the game DOM -> writes snapshot to `chrome.storage.local` and sends a runtime message (`{type: 'reserved-update', cards}`) -> `background.js` also listens and saves the same data -> `popup.js` reads from storage or requests a force-scan via `chrome.tabs.sendMessage({type:'force-scan'})`.
+- **What it is:** A Chrome extension (MV3) composed of a content script and a popup UI.
+- **Key files:** `manifest.json`, `content_script.js`, `popup.html`, `popup.js`, `styles.css`, `images/card_*.png`.
+- **Data flow:** `popup.js` sends `{type: 'capture-reserves', logSelector}` → `content_script.js` calls `captureReserveLogs()` to parse the game log (`#logs`) → extracts reserve events, groups them by player → `popup.js` renders each event with a thumbnail from `images/card_[sourceId].png`.
 
 **Architecture & components**
-- **Manifest (MV3):** `manifest.json` declares `background.service_worker = background.js` and a content script that runs on `https://boardgamearena.com/*`.
+- **Manifest (MV3):** `manifest.json` declares a content script that runs on `https://boardgamearena.com/*` and lists `images/` in `web_accessible_resources` for thumbnail access.
 - **Content script (`content_script.js`):**
-  - Heuristic scanning using `RESERVED_SELECTORS` and a fallback that searches DOM text for "reserved".
-  - Uses a `MutationObserver` to re-scan on DOM changes and deduplicates updates via `lastSnapshot`.
-  - Exposes message handlers: `force-scan` (returns `reservedCards`) and `update-selectors` (replace runtime selectors array).
-  - Persists results to `chrome.storage.local` and also posts `{type: 'reserved-update', cards}` messages.
-- **Background (`background.js`):**
-  - Lightweight MV3 service worker listening for `reserved-update` messages and writing `reservedCards` to `chrome.storage.local` for quick popup retrieval.
-- **Popup (`popup.html` + `popup.js`):**
-  - UI to show detected cards, a `Refresh` button that sends `force-scan`, and a textarea to edit selectors (saved to `reservedSelectors` in storage).
-  - Uses `chrome.tabs.sendMessage` to talk to the content script in the active tab.
+  - **Main function: `captureReserveLogs(logSelector)`** — Parses the game log container (default `#logs`) to extract all "reserve" actions.
+  - Searches for `.log` and `.log_replayable` elements; filters for text matching `/reserve/i`.
+  - For each reserve log entry, extracts:
+    - `sourceId` (card ID from `data-id` attribute or fallback regex extraction from HTML)
+    - `playerName` and `playerColor` (from `.playername` span)
+    - `imageClass`, `cardType` (from `spl_img_*` and `type_*` classes)
+    - `timestamp` (if present)
+    - `text` (the log entry text)
+  - Returns `{ events, byPlayer }` where `byPlayer` is a player-keyed map of ordered events.
+  - **Debug logging:** Set `const DEBUG = true` to trace selector queries, matched elements, and per-log parsing.
+  - **Message handler:** Listens for `{type: 'capture-reserves', logSelector}` and returns the captured result.
+- **Popup (`popup.html` + `popup.js` + `styles.css`):**
+  - **UI:** Log selector input (default `#logs`), `Capture Reserve Logs` button, `Clear` button, results panel.
+  - **`makePreview(ev)`:** Renders card thumbnails using `images/card_[ev.sourceId].png`; falls back to `?` if file not found.
+  - **`renderCaptureResults(result)`:** Groups events by player; displays each with thumbnail, card info, and an `Inspect` button to toggle raw HTML/text view.
+  - **Selector editing:** Removed (no longer used).
 
 **Project-specific conventions & patterns**
-- **Selectors-first design:** The extension relies on CSS selectors (array `RESERVED_SELECTORS` in `content_script.js`) — change these to match BGA's live DOM. The popup persists `reservedSelectors` to `chrome.storage.local`; editing there updates the content script at runtime with `update-selectors` messages.
-- **Message types:** Use literal `type` values seen in the code: `reserved-update`, `force-scan`, `update-selectors`. Keep payload shapes consistent (`{type, cards}` or `{type, selectors}`).
-- **Storage keys:** `reservedCards` and `reservedSelectors` are the canonical keys stored in `chrome.storage.local`.
-- **Lightweight mutation handling:** The content script scans on any mutation; avoid expensive DOM operations. Follow the `findReservedCards()` and `snapshotString()` pattern for idempotent updates.
+- **Log-only approach:** The extension relies **exclusively** on parsing the game log. The old DOM-selector approach (`RESERVED_SELECTORS`) has been removed.
+- **Card thumbnails:** Stored locally as `images/card_[XX].png` where `XX` is the card ID (sourceId). If a file is missing, the preview shows `?`.
+- **Message type:** `capture-reserves` with optional `logSelector` parameter.
+- **Debug output:** Console logs prefixed with `[bga-reserved]` for content script messages; enable/disable via `const DEBUG = true/false`.
 
 **Integration points & external dependencies**
-- **Target host:** `https://boardgamearena.com/*` is whitelisted via `host_permissions` in `manifest.json`.
-- **Chrome APIs used:** `chrome.storage.local`, `chrome.runtime.sendMessage`, `chrome.runtime.onMessage`, `chrome.tabs.query`, `chrome.tabs.sendMessage` — expect asynchronous callbacks and the MV3 service worker lifecycle.
-- **No build toolchain:** This repo has no bundler or build step — files are plain JS/HTML/CSS. Loading unpacked in Chrome is the primary dev workflow.
+- **Target host:** `https://boardgamearena.com/*` via `content_scripts` in `manifest.json`.
+- **Chrome APIs used:** `chrome.runtime.onMessage`, `chrome.tabs.sendMessage`, `chrome.runtime.getURL` (for image paths).
+- **Local images:** `images/card_[id].png` loaded via `chrome.runtime.getURL()`.
+- **No build toolchain:** Plain JS/HTML/CSS files; load unpacked in Chrome.
 
 **Developer workflows & debugging**
-- **Load extension:** Open Chrome → `chrome://extensions` → enable Developer mode → `Load unpacked` → point to repository folder.
-- **Iterating selectors:** Open a Splendor game on BGA, open DevTools to inspect elements that represent reserved cards, then either:
-  - Edit `content_script.js` `RESERVED_SELECTORS` and reload the extension in `chrome://extensions`, or
-  - Paste selectors into the popup textarea and click `Save Selectors` to push them to the content script at runtime.
-- **Testing flow:** With the extension loaded and the game page open:
-  1. Click the extension icon to open the popup.
-  2. Click `Refresh` (the popup sends `force-scan` to the content script).
-  3. Inspect `chrome.storage.local` for `reservedCards` (via DevTools → Application → Storage → Extensions) or watch console logs.
-- **Service worker logs:** Because `background.js` is an MV3 service worker, view logs via the extension page (click "service worker" link in the extension details) or via `chrome://inspect/#service-workers`.
+- **Load extension:** Chrome → `chrome://extensions` → Developer mode → `Load unpacked` → point to repo folder.
+- **Testing flow:**
+  1. Open a Splendor game or replay on BGA.
+  2. Open extension popup (click extension icon).
+  3. Verify log selector (default `#logs`) points to the game log container.
+  4. Click `Capture Reserve Logs`.
+  5. View results grouped by player; click `Inspect` to see raw log HTML/text for each event.
+- **Console debugging:** Open DevTools Console (F12) on the BGA tab. Content script logs appear there (prefixed `[bga-reserved]`). Trace selector matches, log element counts, and per-event parsing.
+- **Adding card images:** Download card face PNGs and save them as `images/card_[id].png`. The popup will automatically load them.
 
 **What to avoid / known gotchas**
-- The BGA UI may render via canvas or obfuscated classes — DOM selectors may not exist. In that case, manual inspection of game JS or network frames is required (outside the scope of this starter).
-- MV3 service worker is ephemeral: keep long-running logic in content scripts; use background only for cross-tab/global state.
-- Cross-origin frames or invalid selectors may throw — content script catches selector errors but be cautious when adding complex selectors.
+- The extension depends entirely on the game log HTML structure. If BGA changes the log container selector or class names (`.log`, `.log_replayable`, `.playername`, etc.), the capture will fail.
+- If a card ID (`sourceId`) is not found or the image file is missing, the preview shows `?`.
+- The capture happens on-demand (via button click), not continuously. Refreshing the page or navigating away clears the popup.
+- The old `RESERVED_SELECTORS` and DOM scanning are now removed and no longer functional.
 
 **Concrete examples to reference in the codebase**
 
-*BGA Splendor DOM structure (from live game sample):*
-- **Cards in play:** `#cards > div.spl_cardrow > div#card_XYZ.spl_card` (main game cards, rows 1-3)
-- **Player reserved area:** `#player_reserve.spl_cardrow` (contains `.spl_card` elements for current player)
-- **Opponent reserved cards (LEFT SIDEBAR):** `#spl_miniplayerboard .spl_hand [id^="minicard_"]` (opponent reserved cards shown as minicard_* elements in left player panels)
-- **Alternative opponent selectors:** `.player-board .spl_hand [id^="minicard_"]`, `div[id^="spl_hand_"] [id^="minicard_"]`
-- **Card visual indicators:** Each card has `spl_img_1` through `spl_img_6` class (determines card image/appearance)
-- **Card type/color:** Each card has `type_C`, `type_S`, `type_E`, `type_R`, `type_O`, or `type_G` class
-- **Key IDs/classes:** `spl_card` (regular cards), `spl_miniversion` (opponent cards), `spl_cardrow` (rows), `type_X` (color)
+*Game log structure (from live sample):*
+- **Log container:** `#logs` (alternatively `#logs_wrap #logs`)
+- **Log entries:** Elements with class `.log` or `.log_replayable` and `id="log_[N]"`
+- **Player name:** `.playername` span within each log entry
+- **Card reference:** `.spl_notif-inner-tooltip[data-id="[CARD_ID]"]` (explicit card ID) or fallback regex search for `tt_card_`, `minicard_`, `card_` patterns
+- **Example reserve log:** `"Helic reserves a <span class="spl_notif-inner-tooltip" data-id="57">card</span>"`
 
-*RESERVED_SELECTORS in `content_script.js` (UPDATED):*
+*captureReserveLogs logic:*
 ```javascript
-const RESERVED_SELECTORS = [
-  '#player_reserve .spl_card',                    // Player's reserved cards in main game area
-  '#spl_miniplayerboard .spl_hand [id^="minicard_"]',  // Opponent reserved cards in left player panels
-  '.player-board .spl_hand [id^="minicard_"]',   // Fallback: opponent reserved cards in any player board
-  'div[id^="spl_hand_"] [id^="minicard_"]',      // Specific opponent hand containers
-  'div[id^="player_"][id*="reserve"] .spl_card', // Dynamic player reserve areas if they exist
-];
+function captureReserveLogs(logSelector) {
+  // 1. Locate log container
+  const logsContainer = document.querySelector(logSelector) || document.getElementById('logs');
+  
+  // 2. Query all log entries
+  const logEls = Array.from(logsContainer.querySelectorAll('.log, .log_replayable'));
+  
+  // 3. Sort by numeric ID (oldest → newest)
+  logEls.sort((a, b) => parseLogIndex(a) - parseLogIndex(b));
+  
+  // 4. For each log:
+  //    - Extract playerName from .playername
+  //    - Filter for /reserve/i text
+  //    - Find .spl_notif-inner-tooltip[data-id] or fallback regex
+  //    - Extract sourceId, imageClass, cardType
+  //    - Add to events array
+  
+  // 5. Group events by playerName
+  
+  // 6. Return { events, byPlayer }
+}
 ```
-**KEY DISCOVERY:** Opponent reserved cards are displayed as `minicard_*` elements (NOT `card_*`) inside `.spl_hand` containers within the opponent player boards shown in the left sidebar. This fixed issue (a) of missing 3rd opponent card.
 
-*Card extraction in `extractCardInfo()` (UPDATED):*
+*Thumbnail rendering in popup:*
 ```javascript
-// Extracts card ID, text, visual class, and card type for rendering
-const imageClass = el.className.match(/spl_img_\d+/)?.[0]; // spl_img_1 to spl_img_6
-const cardType = el.className.match(/type_[A-Z]/)?.[0];    // type_C, type_S, etc.
-return { id, text, html, rect, imageClass, cardType };
+// Use card_[sourceId].png from images/ folder
+img.src = chrome.runtime.getURL(`images/card_${ev.sourceId}.png`);
+img.addEventListener('error', () => { /* fallback to '?' */ });
 ```
-Returns `imageClass` (e.g., `spl_img_2`) for visual card preview instead of text ID.
-
-*Code references:*
-- `content_script.js`: `RESERVED_SELECTORS` now targets both player `.spl_card` and opponent `.spl_hand [id^="minicard_"]`
-- `extractCardInfo()`: Now extracts `imageClass` and `cardType` for visual rendering
-- `popup.js`: Should render cards with visual preview using `imageClass` instead of showing text IDs
-- `popup.html`: Add CSS to display card images using `background-image` or class-based styling
-
-*Developer workflow for selector refinement:*
-1. Open live Splendor game on BGA during mid-game with opponent reserved cards visible
-2. Press F12 → Elements tab; right-click opponent's reserved card in left sidebar → Inspect
-3. Note: opponent cards use `<div id="minicard_XYZ" class="spl_card spl_img_N type_X">` structure
-4. Test in DevTools Console: `document.querySelectorAll('#spl_miniplayerboard .spl_hand [id^="minicard_"]').length > 0`
-5. At game end: verify selectors still work (reserved areas may be hidden but DOM persists in some states)
-6. Use popup "Save Selectors" to test new selectors at runtime without reloading
 
 **Known issues and solutions (BUG TRACKER):**
-- **(a) Missing 3rd opponent card:** FIXED - Changed selectors to target `minicard_*` in `.spl_hand` instead of only player reserve area
-- **(b) Cards disappear at game end:** Selectors use persistent opponent player panels (don't depend on hidden panels)
-- **(c) Cards show as IDs not images:** IN PROGRESS - Extract `imageClass` property and render visual preview in popup
+- **(a) Missing thumbnails:** Verify `images/card_[id].png` files exist; check browser console for 404 errors.
+- **(b) No events captured:** Check that log selector is correct (`#logs` by default); use DevTools Console to manually test `document.querySelector('#logs')`.
+- **(c) Player name not extracted:** Ensure log entries have `.playername` span; inspect a live log entry in DevTools.
+- **(d) Card ID (sourceId) is null:** Verify tooltip has `data-id` attribute or that log HTML contains `tt_card_`, `minicard_`, or `card_` patterns.
+

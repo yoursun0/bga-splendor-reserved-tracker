@@ -1,7 +1,6 @@
 // popup.js - interactive debug popup
 document.addEventListener('DOMContentLoaded', () => {
   const captureBtn = document.getElementById('captureBtn');
-  const refreshBtn = document.getElementById('refreshBtn');
   const clearBtn = document.getElementById('clearResults');
   const logSelectorInput = document.getElementById('logSelector');
   const resultsContainer = document.getElementById('captureResults');
@@ -9,14 +8,51 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveSelectors = document.getElementById('saveSelectors');
 
   function makePreview(ev) {
-    const el = document.createElement('div');
-    el.className = 'cardPreview';
-    const label = ev.imageClass ? ev.imageClass.replace('spl_img_', '') : '?';
-    el.textContent = label;
-    // color by type
-    const colorMap = { type_C: '#F6EFD6', type_S: '#D6E9F6', type_E: '#DFF6E1', type_R: '#F6D6D6', type_O: '#FAE7C8', type_G: '#FFF0B3' };
-    if (ev.cardType && colorMap[ev.cardType]) el.style.backgroundColor = colorMap[ev.cardType];
-    return el;
+    const container = document.createElement('div');
+    container.className = 'cardPreview';
+    
+    // Use local card_XX.png image based on sourceId
+    if (ev.sourceId) {
+      const img = document.createElement('img');
+      img.src = chrome.runtime.getURL(`images/card_${ev.sourceId}.png`);
+      img.alt = `card_${ev.sourceId}`;
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
+      
+      // Fallback to '?' if image fails to load
+      img.addEventListener('error', () => {
+        img.style.display = 'none';
+        const fallback = document.createElement('div');
+        fallback.style.width = '100%';
+        fallback.style.height = '100%';
+        fallback.style.display = 'flex';
+        fallback.style.alignItems = 'center';
+        fallback.style.justifyContent = 'center';
+        fallback.textContent = '?';
+        fallback.style.fontSize = '16px';
+        fallback.style.fontWeight = 'bold';
+        fallback.style.color = '#999';
+        container.appendChild(fallback);
+      });
+      
+      container.appendChild(img);
+      return container;
+    }
+
+    // Fallback when no sourceId
+    const label = document.createElement('div');
+    label.style.width = '100%';
+    label.style.height = '100%';
+    label.style.display = 'flex';
+    label.style.alignItems = 'center';
+    label.style.justifyContent = 'center';
+    label.textContent = '?';
+    label.style.fontSize = '16px';
+    label.style.fontWeight = 'bold';
+    label.style.color = '#999';
+    container.appendChild(label);
+    return container;
   }
 
   function renderCaptureResults(result) {
@@ -103,24 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
           renderCaptureResults(resp.result);
         } else {
           resultsContainer.textContent = '(capture failed or no response)';
-        }
-      });
-    });
-  });
-
-  refreshBtn.addEventListener('click', () => {
-    // Ask content script to return the latest reserved snapshot
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || !tabs[0]) return;
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'force-scan' }, (resp) => {
-        if (resp && resp.cards) {
-          // convert cards into a faux result with single 'Unknown' player
-          renderCaptureResults({ events: resp.cards, byPlayer: { 'Detected': resp.cards } });
-        } else {
-          chrome.storage.local.get('reservedCards', (res) => {
-            const cards = res.reservedCards || [];
-            renderCaptureResults({ events: cards, byPlayer: { 'Detected': cards } });
-          });
         }
       });
     });
