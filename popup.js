@@ -1,11 +1,6 @@
-// popup.js - interactive debug popup
+// popup.js - simple reserved cards display
 document.addEventListener('DOMContentLoaded', () => {
-  const captureBtn = document.getElementById('captureBtn');
-  const clearBtn = document.getElementById('clearResults');
-  const logSelectorInput = document.getElementById('logSelector');
   const resultsContainer = document.getElementById('captureResults');
-  const selectorsArea = document.getElementById('selectors');
-  const saveSelectors = document.getElementById('saveSelectors');
 
   function makePreview(ev) {
     const container = document.createElement('div');
@@ -62,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Render grouped by player first
+    // Render grouped by player
     const byPlayer = result.byPlayer || {};
     Object.keys(byPlayer).forEach(player => {
       const section = document.createElement('div');
@@ -89,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const meta = document.createElement('div');
         meta.style.flex = '1';
         const top = document.createElement('div');
-        top.textContent = `${idx + 1}. ${ev.sourceId ? 'id:' + ev.sourceId : (ev.text || '').slice(0, 50)}`;
+        top.textContent = `${idx + 1}. ${ev.sourceId ? 'id:' + ev.sourceId : '(invisible)'}`;
         top.style.fontSize = '12px';
         top.style.fontWeight = '600';
         const sub = document.createElement('div');
@@ -100,28 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
         meta.appendChild(top);
         meta.appendChild(sub);
 
-        const inspect = document.createElement('button');
-        inspect.textContent = 'Inspect';
-        inspect.style.fontSize = '11px';
-        inspect.addEventListener('click', () => {
-          // toggle rawHtml display
-          if (row._raw) {
-            row.removeChild(row._raw);
-            row._raw = null;
-          } else {
-            const raw = document.createElement('pre');
-            raw.style.fontSize = '10px';
-            raw.style.maxHeight = '160px';
-            raw.style.overflow = 'auto';
-            raw.textContent = ev.rawHtml || ev.text || '';
-            row.appendChild(raw);
-            row._raw = raw;
-          }
-        });
-
         row.appendChild(pv);
         row.appendChild(meta);
-        row.appendChild(inspect);
         list.appendChild(row);
       });
 
@@ -130,11 +105,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  captureBtn.addEventListener('click', () => {
-    const selector = (logSelectorInput.value || '').trim() || '#logs';
+  function captureReserves() {
+    const logSelector = '#logs'; // default selector
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs || !tabs[0]) return;
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'capture-reserves', logSelector: selector }, (resp) => {
+      chrome.tabs.sendMessage(tabs[0].id, { type: 'capture-reserves', logSelector }, (resp) => {
         if (resp && resp.ok && resp.result) {
           renderCaptureResults(resp.result);
         } else {
@@ -142,29 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     });
-  });
+  }
 
-  clearBtn.addEventListener('click', () => { resultsContainer.innerHTML = ''; });
-
-  saveSelectors.addEventListener('click', () => {
-    const selectors = selectorsArea.value.split('\n').map(s => s.trim()).filter(Boolean);
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || !tabs[0]) return;
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'update-selectors', selectors }, (resp) => {
-        console.log('selectors update resp', resp);
-      });
-    });
-  });
-
-  // Load selectors from storage
-  chrome.storage.local.get(['reservedSelectors', 'reservedCards'], (res) => {
-    if (res.reservedSelectors) selectorsArea.value = res.reservedSelectors.join('\n');
-    // show saved snapshot if any
-    if (res.reservedCards && res.reservedCards.length) renderCaptureResults({ events: res.reservedCards, byPlayer: { 'Saved Snapshot': res.reservedCards } });
-  });
-
-  selectorsArea.addEventListener('change', () => {
-    const selectors = selectorsArea.value.split('\n').map(s => s.trim()).filter(Boolean);
-    chrome.storage.local.set({ reservedSelectors: selectors });
-  });
+  // Auto-capture on popup display
+  captureReserves();
 });

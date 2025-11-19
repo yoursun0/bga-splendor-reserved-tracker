@@ -55,7 +55,7 @@ function captureReserveLogs(logSelector) {
     const timestampEl = logEl.querySelector('.timestamp');
     const timestamp = timestampEl ? timestampEl.textContent.trim() : null;
 
-    // Find tooltip nodes (explicit card mentions)
+    // Find tooltip nodes (explicit card mentions) - handles both visible and invisible cards
     const tooltips = Array.from(logEl.querySelectorAll('.spl_notif-inner-tooltip, .spl_notif-inner-tooltip[data-id]'));
     if (DEBUG) console.log('[bga-reserved] captureReserveLogs: found tooltips', tooltips.length);
     if (tooltips.length) {
@@ -92,38 +92,74 @@ function captureReserveLogs(logSelector) {
         events.push({ sourceId, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: ttHtml });
       });
     } else {
-      // Fallback: try to find card ids or tt_card_XX patterns in the log HTML
+      // No explicit tooltip IDs found
+      // Check if this is an "invisible card" reservation (text like "reserves an invisible card")
       const outer = logEl.outerHTML || '';
-      const idMatch = outer.match(/(?:tt_card_|minicard_|card_)(\d+)/);
-      const sourceId = idMatch ? idMatch[1] : null;
-      const imageClass = (outer.match(/spl_img_\d+/) || [null])[0];
-      const cardType = (outer.match(/type_[A-Za-z]/) || [null])[0];
-      // try to pick up an image URL from actual DOM elements if present
-      let imageUrl = null;
-      try {
-        const node = logEl;
-        const findImg = (node, depth = 6) => {
-          if (!node || depth < 0) return null;
-          if (node.tagName && node.tagName.toLowerCase() === 'img' && node.src) return node.src;
-          try {
-            const cs = window.getComputedStyle(node);
-            if (cs && cs.backgroundImage && cs.backgroundImage !== 'none') {
-              const m = cs.backgroundImage.match(/url\(["']?(.*?)["']?\)/);
-              if (m && m[1]) return m[1];
+      const isInvisible = /invisible/i.test(rawText);
+      
+      // For invisible cards, we may not have a sourceId, but still record the event
+      if (isInvisible) {
+        if (DEBUG) console.log('[bga-reserved] captureReserveLogs: invisible card reservation detected');
+        const imageClass = (outer.match(/spl_img_\d+/) || [null])[0];
+        const cardType = (outer.match(/type_[A-Za-z]/) || [null])[0];
+        let imageUrl = null;
+        try {
+          const node = logEl;
+          const findImg = (node, depth = 6) => {
+            if (!node || depth < 0) return null;
+            if (node.tagName && node.tagName.toLowerCase() === 'img' && node.src) return node.src;
+            try {
+              const cs = window.getComputedStyle(node);
+              if (cs && cs.backgroundImage && cs.backgroundImage !== 'none') {
+                const m = cs.backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+                if (m && m[1]) return m[1];
+              }
+            } catch (e) { /* ignore */ }
+            const children = node.children || [];
+            for (let i = 0; i < children.length; i++) {
+              const r = findImg(children[i], depth - 1);
+              if (r) return r;
             }
-          } catch (e) { /* ignore */ }
-          const children = node.children || [];
-          for (let i = 0; i < children.length; i++) {
-            const r = findImg(children[i], depth - 1);
-            if (r) return r;
-          }
-          return null;
-        };
-        const rawUrl = findImg(node, 6);
-        if (rawUrl) imageUrl = (new URL(rawUrl, location.href).href);
-      } catch (e) { /* ignore */ }
-      if (DEBUG) console.log('[bga-reserved] captureReserveLogs: fallback parse ->', { sourceId, imageClass, cardType, imageUrl });
-      events.push({ sourceId, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer });
+            return null;
+          };
+          const rawUrl = findImg(node, 6);
+          if (rawUrl) imageUrl = (new URL(rawUrl, location.href).href);
+        } catch (e) { /* ignore */ }
+        // Record invisible card with sourceId = null
+        events.push({ sourceId: null, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer });
+      } else {
+        // Fallback: try to find card ids or tt_card_XX patterns in the log HTML (for visible cards without explicit tooltip)
+        const idMatch = outer.match(/(?:tt_card_|minicard_|card_)(\d+)/);
+        const sourceId = idMatch ? idMatch[1] : null;
+        const imageClass = (outer.match(/spl_img_\d+/) || [null])[0];
+        const cardType = (outer.match(/type_[A-Za-z]/) || [null])[0];
+        // try to pick up an image URL from actual DOM elements if present
+        let imageUrl = null;
+        try {
+          const node = logEl;
+          const findImg = (node, depth = 6) => {
+            if (!node || depth < 0) return null;
+            if (node.tagName && node.tagName.toLowerCase() === 'img' && node.src) return node.src;
+            try {
+              const cs = window.getComputedStyle(node);
+              if (cs && cs.backgroundImage && cs.backgroundImage !== 'none') {
+                const m = cs.backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+                if (m && m[1]) return m[1];
+              }
+            } catch (e) { /* ignore */ }
+            const children = node.children || [];
+            for (let i = 0; i < children.length; i++) {
+              const r = findImg(children[i], depth - 1);
+              if (r) return r;
+            }
+            return null;
+          };
+          const rawUrl = findImg(node, 6);
+          if (rawUrl) imageUrl = (new URL(rawUrl, location.href).href);
+        } catch (e) { /* ignore */ }
+        if (DEBUG) console.log('[bga-reserved] captureReserveLogs: fallback parse ->', { sourceId, imageClass, cardType, imageUrl });
+        events.push({ sourceId, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer });
+      }
     }
   });
 
