@@ -4,7 +4,7 @@
 // Only the captureReserveLogs function is active; old RESERVED_SELECTORS approach is deprecated.
 
 // Toggle verbose console debugging
-const DEBUG = false;
+const DEBUG = true;
 
 
 // Capture all "reserve" log entries in chronological order and return
@@ -40,12 +40,61 @@ function captureReserveLogs(logSelector) {
 
   const reserveRe = /\b(reserve|reserves|reserved)\b/i;
   const events = [];
+  const buys = [];
+
+  function getRowAndColorFromId(id) {
+    const n = parseInt(id, 10);
+    if (!Number.isFinite(n)) return { row: null, color: null };
+    let rowNum = null;
+    if (n >= 1 && n <= 40) rowNum = 1;
+    else if (n >= 41 && n <= 70) rowNum = 2;
+    else if (n >= 71 && n <= 90) rowNum = 3;
+
+    // color mapping for reserve logs (id -> color)
+    // reserve mapping: icon_C -> white, icon_S -> blue, icon_E -> green, icon_R -> red, icon_O -> black
+    let colorName = 'black'; // default
+    const inRanges = (ranges) => ranges.some(([a,b]) => n >= a && n <= b);
+    if (inRanges([[1,8],[41,46],[71,74]])) colorName = 'white';
+    else if (inRanges([[9,16],[47,52],[75,78]])) colorName = 'blue';
+    else if (inRanges([[17,24],[53,58],[79,82]])) colorName = 'green';
+    else if (inRanges([[25,32],[59,64],[83,86]])) colorName = 'red';
+
+    return { rowNum, colorName };
+  }
 
   logEls.forEach(logEl => {
     const rawText = (logEl.innerText || '').trim();
     if (DEBUG) console.log('[bga-reserved] captureReserveLogs: processing log', logEl.id || '(no id)', 'text', rawText.slice(0,120));
     if (!reserveRe.test(rawText)) {
       if (DEBUG) console.log('[bga-reserved] captureReserveLogs: skipping non-reserve log', logEl.id || '(no id)');
+      // But also check for buy-from-hand logs
+      const buyRe = /\bbuys\b/i;
+      if (buyRe.test(rawText) && /from hand/i.test(rawText)) {
+        // try to extract gem/color icon class from log HTML
+        const outer = logEl.outerHTML || '';
+        const colorMatch = outer.match(/class=\"[^\"]*?(icon_[A-Za-z])[^\\\"]*?\"/) || outer.match(/class='[^']*?(icon_[A-Za-z])[^']*?'/);
+        const colorClass = colorMatch ? colorMatch[1] : null;
+        // map buy-log color classes to canonical color names
+        // buy mapping: icon_E -> white, icon_C -> blue, icon_R -> green, icon_O -> red, icon_S -> black
+        let buyColorName = null;
+        if (colorClass) {
+          const m = (colorClass || '').toLowerCase();
+          if (m === 'icon_e') buyColorName = 'white';
+          else if (m === 'icon_c') buyColorName = 'blue';
+          else if (m === 'icon_r') buyColorName = 'green';
+          else if (m === 'icon_o') buyColorName = 'red';
+          else if (m === 'icon_s') buyColorName = 'black';
+        }
+        // try to extract row circles like (◯◯◯)
+        const rowMatch = rawText.match(/\((\u25EF+)\)/);
+        const rowNum = rowMatch ? rowMatch[1].length : null;
+        const playerSpan = logEl.querySelector('.playername');
+        const playerName = playerSpan ? playerSpan.textContent.trim() : 'Unknown';
+        const timestampEl = logEl.querySelector('.timestamp');
+        const timestamp = timestampEl ? timestampEl.textContent.trim() : null;
+        buys.push({ playerName, colorClass, colorName: buyColorName, rowNum, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer });
+        if (DEBUG) console.log('[bga-reserved] captureReserveLogs: detected buy-from-hand', buys[buys.length-1]);
+      }
       return; // skip non-reserve logs
     }
 
@@ -89,7 +138,14 @@ function captureReserveLogs(logSelector) {
           if (rawUrl) imageUrl = (new URL(rawUrl, location.href).href);
         } catch (e) { /* ignore */ }
         if (DEBUG) console.log('[bga-reserved] captureReserveLogs: tooltip ->', { sourceId, imageClass, cardType, imageUrl });
-        events.push({ sourceId, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: ttHtml });
+        const ev = { sourceId, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: ttHtml };
+        if (sourceId) {
+          const rc = getRowAndColorFromId(sourceId);
+          ev.row = rc.rowNum; ev.color = rc.colorName;
+        } else {
+          ev.row = null; ev.color = null;
+        }
+        events.push(ev);
       });
     } else {
       // No explicit tooltip IDs found
@@ -126,7 +182,9 @@ function captureReserveLogs(logSelector) {
           if (rawUrl) imageUrl = (new URL(rawUrl, location.href).href);
         } catch (e) { /* ignore */ }
         // Record invisible card with sourceId = null
-        events.push({ sourceId: null, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer });
+        const ev = { sourceId: null, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer };
+        ev.row = null; ev.color = null;
+        events.push(ev);
       } else {
         // Fallback: try to find card ids or tt_card_XX patterns in the log HTML (for visible cards without explicit tooltip)
         const idMatch = outer.match(/(?:tt_card_|minicard_|card_)(\d+)/);
@@ -158,7 +216,12 @@ function captureReserveLogs(logSelector) {
           if (rawUrl) imageUrl = (new URL(rawUrl, location.href).href);
         } catch (e) { /* ignore */ }
         if (DEBUG) console.log('[bga-reserved] captureReserveLogs: fallback parse ->', { sourceId, imageClass, cardType, imageUrl });
-        events.push({ sourceId, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer });
+        const ev = { sourceId, playerName, playerColor, imageClass, cardType, imageUrl, text: rawText, logId: logEl.id || null, timestamp, rawHtml: outer };
+        if (sourceId) {
+          const rc = getRowAndColorFromId(sourceId);
+          ev.row = rc.rowNum; ev.color = rc.colorName;
+        } else { ev.row = null; ev.color = null; }
+        events.push(ev);
       }
     }
   });
@@ -170,9 +233,9 @@ function captureReserveLogs(logSelector) {
     byPlayer[key].push(ev);
   });
 
-  if (DEBUG) console.log('[bga-reserved] captureReserveLogs: finished capture, events:', events.length);
+  if (DEBUG) console.log('[bga-reserved] captureReserveLogs: finished capture, events:', events.length, 'buys:', buys.length);
 
-  return { events, byPlayer };
+  return { events, byPlayer, buys };
 }
 
 // Optional: listen for messages from popup to capture reserves
