@@ -1,4 +1,4 @@
-# BGA Splendor: Opponent Reserved Tracker
+# BGA Splendor: Opponent Reserved Card Tracker
 
 This is a Chrome extension (Manifest V3) that detects opponent reserved cards on BoardGameArena's Splendor game and displays them in a popup with visual card previews.
 

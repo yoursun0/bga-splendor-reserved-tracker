@@ -13,10 +13,16 @@ const DEBUG = true;
 function getCardImageUrl(id) {
   try {
     if (typeof chrome !== 'undefined' && chrome && chrome.runtime && typeof chrome.runtime.getURL === 'function') {
-      return chrome.runtime.getURL(`images/card_${id}.png`);
+      const url = chrome.runtime.getURL(`images/card_${id}.png`);
+      if (DEBUG) console.log('[bga-reserved] getCardImageUrl:', id, '->', url);
+      return url;
     }
-  } catch (e) { /* ignore */ }
-  return `images/card_${id}.png`;
+  } catch (e) {
+    if (DEBUG) console.warn('[bga-reserved] getCardImageUrl error:', e);
+  }
+  const fallback = `images/card_${id}.png`;
+  if (DEBUG) console.log('[bga-reserved] getCardImageUrl fallback for:', id, '->', fallback);
+  return fallback;
 }
 
 
@@ -410,13 +416,24 @@ function revealHiddenMiniCardsOnce(byPlayerMap, playerIdToName, userId) {
           const img = document.createElement('img');
           img.src = getCardImageUrl(sourceId);
           img.alt = '';
-          img.style.width = '100%';
+          // Make the revealed image larger so it covers the mini-card slot
+          img.style.width = '300%';
           img.style.height = '100%';
           img.style.objectFit = 'cover';
           img.style.display = 'block';
 
+          // Remove rotation/margin from the slot so card appears vertical
+          try {
+            // Clear transform and margin-left so the slot is vertical
+            if (slot && slot.style) {
+              slot.style.transform = 'none';
+              slot.style.marginLeft = '0px';
+            }
+          } catch (e) { /* ignore */ }
+
           // If image fails to load, fall back to a subtle placeholder
           img.addEventListener('error', () => {
+            if (DEBUG) console.warn('[bga-reserved] revealHiddenMiniCardsOnce: image failed to load:', img.src);
             try {
               if (img.parentNode) {
                 img.parentNode.removeChild(img);
@@ -428,6 +445,7 @@ function revealHiddenMiniCardsOnce(byPlayerMap, playerIdToName, userId) {
             } catch (e) { /* ignore */ }
           });
 
+          if (DEBUG) console.log('[bga-reserved] revealHiddenMiniCardsOnce: inserting img for slot', slot.id, 'sourceId', sourceId, 'src', img.src);
           slot.appendChild(img);
         } catch (e) {
           if (DEBUG) console.warn('[bga-reserved] revealHiddenMiniCardsOnce: slot update error', e);

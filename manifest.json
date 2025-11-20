@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BGA Splendor: Opponent Reserved Tracker (starter)",
+  "name": "BGA Splendor: Opponent Reserved Card Tracker",
   "version": "0.1.0",
-  "description": "Track opponent-reserved cards in BoardGameArena Splendor (starter extension — adapt selectors).",
+  "description": "Track opponent-reserved cards in BoardGameArena Splendor games (thus you do not need to scroll down the history log).",
   "icons": {
     "48": "icons/icon48.png"
   },
@@ -19,13 +19,19 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "BGA Splendor Reserved Tracker"
+    "default_title": "BGA Splendor Reserved Cards Tracker"
   },
   "content_scripts": [
     {
       "matches": ["https://boardgamearena.com/*"],
       "js": ["content_script.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["images/card_*.png"],
+      "matches": ["https://boardgamearena.com/*"]
     }
   ]
 }
