@@ -4,7 +4,7 @@
 // Only the captureReserveLogs function is active; old RESERVED_SELECTORS approach is deprecated.
 
 // Toggle verbose console debugging
-const DEBUG = true;
+const DEBUG = false;
 
 
 // Capture all "reserve" log entries in chronological order and return

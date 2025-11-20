@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (resp && resp.ok && resp.result) {
           renderCaptureResults(resp.result);
         } else {
-          resultsContainer.textContent = '(capture failed or no response)';
+          resultsContainer.textContent = 'no cards are reserved yet';
         }
       });
     });

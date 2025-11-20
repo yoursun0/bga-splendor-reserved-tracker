@@ -1,0 +1,4 @@
+node_modules/
+
+# Ignore Puppeteer Chromium downloads (optional)
+.local-chromium/

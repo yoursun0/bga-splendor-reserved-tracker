@@ -1,0 +1,16 @@
+{
+  "name": "bga-card-crawler",
+  "version": "1.0.0",
+  "description": "Mini crawler to capture card_xx screenshots from local BGA sample HTML or live pages",
+  "main": "crawl.js",
+  "scripts": {
+    "start": "node crawl.js",
+    "cleanup": "node cleanup.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "puppeteer": "^24.30.0"
+  }
+}
