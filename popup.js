@@ -1,12 +1,32 @@
 // popup.js - simple reserved cards display
 document.addEventListener('DOMContentLoaded', () => {
   const resultsContainer = document.getElementById('captureResults');
+  const autoToggle = document.getElementById('autoRevealToggle');
+
+  // initialize toggle state from storage
+  if (autoToggle) {
+    try {
+      chrome.storage.local.get({ autoRevealEnabled: false }, (vals) => {
+        autoToggle.checked = !!vals.autoRevealEnabled;
+      });
+
+      autoToggle.addEventListener('change', () => {
+        const enabled = !!autoToggle.checked;
+        chrome.storage.local.set({ autoRevealEnabled: enabled }, () => {
+          // notify content scripts to toggle immediately
+          chrome.runtime.sendMessage({ type: 'auto-reveal-set', enabled });
+        });
+      });
+    } catch (e) {
+      // In case chrome.storage isn't available (tests), ignore
+    }
+  }
 
   function makePreview(ev) {
     const container = document.createElement('div');
     container.className = 'cardPreview';
     
-    // Use local card_XX.png image based on sourceId
+    // Use local card_XX.png image based on sourceId, or card_cover_X.png for hidden cards
     if (ev.sourceId) {
       const img = document.createElement('img');
       img.src = chrome.runtime.getURL(`images/card_${ev.sourceId}.png`);
@@ -34,8 +54,37 @@ document.addEventListener('DOMContentLoaded', () => {
       container.appendChild(img);
       return container;
     }
+    
+    // Hidden card: use card_cover_X.png based on row
+    if (ev.isHidden && ev.row) {
+      const img = document.createElement('img');
+      img.src = chrome.runtime.getURL(`images/card_cover_${ev.row}.png`);
+      img.alt = `hidden_card_row_${ev.row}`;
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
+      
+      // Fallback to '?' if image fails to load
+      img.addEventListener('error', () => {
+        img.style.display = 'none';
+        const fallback = document.createElement('div');
+        fallback.style.width = '100%';
+        fallback.style.height = '100%';
+        fallback.style.display = 'flex';
+        fallback.style.alignItems = 'center';
+        fallback.style.justifyContent = 'center';
+        fallback.textContent = '?';
+        fallback.style.fontSize = '16px';
+        fallback.style.fontWeight = 'bold';
+        fallback.style.color = '#999';
+        container.appendChild(fallback);
+      });
+      
+      container.appendChild(img);
+      return container;
+    }
 
-    // Fallback when no sourceId
+    // Fallback when no sourceId and no hidden card info
     const label = document.createElement('div');
     label.style.width = '100%';
     label.style.height = '100%';
@@ -92,7 +141,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const colorLabel = ev.color ? `| color: ${ev.color}` : (ev.cardType || '');
         
         const top = document.createElement('div');
-        top.textContent = `${idx + 1}. ${ev.sourceId ? 'id:' + ev.sourceId : '(invisible)'} ${rowLabel} ${colorLabel}`;
+        const cardLabel = ev.isHidden ? `(hidden)` : (ev.sourceId ? 'id:' + ev.sourceId : '(invisible)');
+        top.textContent = `${idx + 1}. ${cardLabel} ${rowLabel} ${colorLabel}`;
         top.style.fontSize = '12px';
         top.style.fontWeight = '600';
 
@@ -121,11 +171,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // find player's section
         const playerSection = Array.from(resultsContainer.querySelectorAll('div')).find(d => d.dataset && d.dataset.player === player);
         if (!playerSection) return;
-        // find the first matching row with same rowNum and colorName
+        
+        // First, try to find a matching visible card with same rowNum and colorName
         const candidates = Array.from(playerSection.querySelectorAll('[data-rownum][data-colorname]'));
         const match = candidates.find(c => c.dataset.rownum === (b.rowNum ? String(b.rowNum) : '') && c.dataset.colorname === (b.colorName || ''));
         if (match) {
           match.remove();
+          return; // found and removed visible card, we're done
+        }
+        
+        // If no visible card matched, check for a hidden card with matching row number
+        // Hidden cards are shown with (invisible) label and have data-rownum but no data-colorname
+        const hiddenCandidates = Array.from(playerSection.querySelectorAll('[data-rownum]:not([data-colorname]'));
+        const hiddenMatch = hiddenCandidates.find(c => c.dataset.rownum === (b.rowNum ? String(b.rowNum) : ''));
+        if (hiddenMatch) {
+          hiddenMatch.remove(); // remove the hidden card that was bought
         }
       });
     }
