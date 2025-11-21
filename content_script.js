@@ -375,6 +375,31 @@ function revealHiddenMiniCardsOnce(byPlayerMap, playerIdToName, userId) {
         return ids.slice(-n).reverse();
       })(eventsForPlayer, hiddenSlots.length);
 
+      // Track which sourceIds we've assigned in this hand so we don't duplicate images
+      const usedSourceIds = new Set();
+      // Pre-seed with any already-marked revealed ids in the DOM to avoid reusing them
+      hiddenSlots.forEach(s => { if (s.dataset && s.dataset.bgaRevealed) usedSourceIds.add(String(s.dataset.bgaRevealed)); });
+
+      // Helper: find an unused sourceId for a given row from the player's events (newest-first)
+      function pickUnusedForRow(row) {
+        if (!row) return null;
+        for (let i = eventsForPlayer.length - 1; i >= 0; i--) {
+          const ev = eventsForPlayer[i];
+          if (!ev || !ev.sourceId) continue;
+          if (ev.row === row && !usedSourceIds.has(String(ev.sourceId))) return ev.sourceId;
+        }
+        return null;
+      }
+
+      // Helper: pick first unused id from fallbackIds
+      function pickUnusedFromFallback(startIdx) {
+        for (let j = startIdx; j < fallbackIds.length; j++) {
+          const cand = fallbackIds[j];
+          if (cand && !usedSourceIds.has(String(cand))) return cand;
+        }
+        return null;
+      }
+
       hiddenSlots.forEach((slot, idx) => {
         try {
           // Attempt to infer the card row from classes like `spl_back_1` / `spl_back_2` / `spl_back_3`
@@ -391,8 +416,15 @@ function revealHiddenMiniCardsOnce(byPlayerMap, playerIdToName, userId) {
 
           // Decide which sourceId to show for this slot
           let sourceId = null;
-          if (row && byRow[row]) sourceId = byRow[row];
-          else sourceId = fallbackIds[idx] || null;
+          // Prefer an unused id for this row
+          if (row) {
+            // try the latest event for this row that isn't used yet
+            sourceId = pickUnusedForRow(row) || null;
+            // If pickLatestByRow had a value but it was used, fallback to other candidates
+            if (!sourceId && byRow[row] && !usedSourceIds.has(String(byRow[row]))) sourceId = byRow[row];
+          }
+          // If still not found, pick from fallback ids (prefer earlier indices then later)
+          if (!sourceId) sourceId = pickUnusedFromFallback(0) || null;
 
           if (!sourceId) {
             // nothing to reveal for this slot — if previously revealed, clear it
@@ -403,24 +435,19 @@ function revealHiddenMiniCardsOnce(byPlayerMap, playerIdToName, userId) {
             return;
           }
 
-          // If already revealed with the same id, skip
-          if (slot.dataset && slot.dataset.bgaRevealed === String(sourceId)) return;
+          // If already revealed with the same id, mark it used and skip
+          if (slot.dataset && slot.dataset.bgaRevealed === String(sourceId)) {
+            usedSourceIds.add(String(sourceId));
+            return;
+          }
 
-          // Mark as revealed
+          // Mark as revealed and record as used
           if (slot.dataset) slot.dataset.bgaRevealed = String(sourceId);
+          usedSourceIds.add(String(sourceId));
 
           // Preserve existing inline style and transform; replace contents with an <img>
           // but keep the slot element itself so we don't disturb BGA's layout listeners.
           while (slot.firstChild) slot.removeChild(slot.firstChild);
-
-          const img = document.createElement('img');
-          img.src = getCardImageUrl(sourceId);
-          img.alt = '';
-          // Make the revealed image larger so it covers the mini-card slot
-          img.style.width = '300%';
-          img.style.height = '100%';
-          img.style.objectFit = 'cover';
-          img.style.display = 'block';
 
           // Remove rotation/margin from the slot so card appears vertical
           try {
@@ -428,15 +455,39 @@ function revealHiddenMiniCardsOnce(byPlayerMap, playerIdToName, userId) {
             if (slot && slot.style) {
               slot.style.transform = 'none';
               slot.style.marginLeft = '0px';
+              // Set position relative so we can position the container absolutely inside
+              slot.style.position = 'relative';
+              slot.style.overflow = 'hidden';
             }
           } catch (e) { /* ignore */ }
+
+          // Create a centered container for the image
+          const container = document.createElement('div');
+          container.style.position = 'absolute';
+          container.style.top = '50%';
+          container.style.left = '50%';
+          container.style.transform = 'translate(-50%, -50%)';
+          container.style.width = '300%';
+          container.style.height = '300%';
+          container.style.display = 'flex';
+          container.style.alignItems = 'center';
+          container.style.justifyContent = 'center';
+
+          const img = document.createElement('img');
+          img.src = getCardImageUrl(sourceId);
+          img.alt = '';
+          // Image scaled to fit slot with proper aspect ratio
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.objectFit = 'cover';
+          img.style.display = 'block';
 
           // If image fails to load, fall back to a subtle placeholder
           img.addEventListener('error', () => {
             if (DEBUG) console.warn('[bga-reserved] revealHiddenMiniCardsOnce: image failed to load:', img.src);
             try {
-              if (img.parentNode) {
-                img.parentNode.removeChild(img);
+              if (container.parentNode) {
+                container.parentNode.removeChild(container);
                 slot.style.background = '#222';
                 slot.style.color = '#fff';
                 slot.style.textAlign = 'center';
@@ -446,7 +497,8 @@ function revealHiddenMiniCardsOnce(byPlayerMap, playerIdToName, userId) {
           });
 
           if (DEBUG) console.log('[bga-reserved] revealHiddenMiniCardsOnce: inserting img for slot', slot.id, 'sourceId', sourceId, 'src', img.src);
-          slot.appendChild(img);
+          container.appendChild(img);
+          slot.appendChild(container);
         } catch (e) {
           if (DEBUG) console.warn('[bga-reserved] revealHiddenMiniCardsOnce: slot update error', e);
         }

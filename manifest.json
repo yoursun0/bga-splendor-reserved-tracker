@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BGA Splendor: Opponent Reserved Card Tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Track opponent-reserved cards in BoardGameArena Splendor games (thus you do not need to scroll down the history log).",
   "icons": {
     "48": "icons/icon48.png"
