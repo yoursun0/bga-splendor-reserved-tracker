@@ -7,8 +7,6 @@
     "48": "icons/icon48.png"
   },
   "permissions": [
-    "storage",
-    "scripting",
     "activeTab"
   ],
   "host_permissions": [
